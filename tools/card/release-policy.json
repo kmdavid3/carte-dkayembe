@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "exception_id": "EX-CARTE-PAGES-A2",
+  "assurance_level": "A2",
+  "status": "approved",
+  "approved_on": "2026-10-21",
+  "expires_at": "2026-11-20T23:59:59+01:00",
+  "approval_evidence": "Explicit owner approval in the project chat on 2026-10-21; private exception register",
+  "repository": "kmdavid3/carte-dkayembe",
+  "branch": "gh-pages",
+  "url": "https://kmdavid3.github.io/carte-dkayembe/",
+  "runtime_files": [
+    "index.html", "style.css", "app.js", "qr.js",
+    "assets/sils-logo-signature.svg", "assets/sils-logo-signature.png",
+    "assets/fonts/Manrope-variable-latin.woff", "assets/fonts/Manrope-OFL.txt",
+    "assets/fonts/SourceSans3-variable-latin.woff", "assets/fonts/SourceSans3-OFL.txt",
+    ".nojekyll"
+  ],
+  "accepted_residual_controls": [
+    "managed-pages-http-headers-and-log-retention",
+    "independent-human-review-during-solo-operation",
+    "pending-full-technology-and-platform-qualification"
+  ]
+}

@@ -1,0 +1,6 @@
+tools/card/node_modules/
+tools/card/test-results/
+__pycache__/
+*.pyc
+release/
+restored-card/

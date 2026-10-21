@@ -1,0 +1,114 @@
+name: Card A2
+
+'on':
+  push:
+    branches: [gh-pages, 'codex/**']
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 6 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: card-a2-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: A2 checks
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tools/card/package-lock.json
+      - name: Select the card source
+        run: |
+          if test -f propositions/carte-visite/index.html; then
+            echo 'CARD_ROOT=propositions/carte-visite' >> "$GITHUB_ENV"
+          else
+            echo 'CARD_ROOT=.' >> "$GITHUB_ENV"
+          fi
+      - name: Install locked test tools and check dependencies
+        run: |
+          npm --prefix tools/card ci --ignore-scripts
+          npm --prefix tools/card audit --audit-level=high
+          node tools/card/node_modules/playwright/cli.js install --with-deps chromium
+      - name: Static security, expiry and source checks
+        run: python tools/card/security.py --root "$CARD_ROOT"
+      - name: Browser, vCard and independent QR tests
+        run: node tools/card/check-card.mjs --root "$CARD_ROOT"
+      - name: Build one bounded release and restore it
+        run: |
+          python tools/card/test_release.py
+          python tools/card/release.py build --root "$CARD_ROOT" --out release
+          python tools/card/release.py restore --archive release/card.zip --manifest release/manifest.json --out restored-card
+          node tools/card/check-card.mjs --root restored-card
+      - name: Portable Linux image and security headers
+        run: |
+          docker build --tag sils-card-a2 release/portable
+          docker run --detach --name sils-card-a2 --read-only --cap-drop ALL --security-opt no-new-privileges --tmpfs /tmp:rw,noexec,nosuid,size=16m --publish 127.0.0.1:8766:8080 sils-card-a2
+          trap 'docker rm -f sils-card-a2 >/dev/null' EXIT
+          docker exec sils-card-a2 /bin/sh -c 'test "$(id -u)" -ne 0'
+          python tools/card/probe_portable.py --url http://127.0.0.1:8766 --root release/site
+      - name: Retain checksums, SBOM, provenance and recoverable archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: card-release-${{ github.sha }}
+          path: |
+            release/card.zip
+            release/manifest.json
+            release/SHA256SUMS
+            release/sbom.spdx.json
+            release/provenance.json
+          retention-days: 30
+          if-no-files-found: error
+      - name: Upload only the reviewed runtime files for Pages
+        if: github.repository == 'kmdavid3/carte-dkayembe' && github.ref == 'refs/heads/gh-pages' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: release/site
+
+  deploy:
+    name: Deploy card
+    if: github.repository == 'kmdavid3/carte-dkayembe' && github.ref == 'refs/heads/gh-pages' && github.event_name != 'pull_request' && github.event_name != 'schedule'
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Recheck the owner approval immediately before deployment
+        run: python tools/card/release.py authorize
+      - name: Deploy the verified Pages artifact
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+  public-health:
+    name: Public health
+    if: always() && github.repository == 'kmdavid3/carte-dkayembe' && github.ref == 'refs/heads/gh-pages' && (needs.deploy.result == 'success' || github.event_name == 'schedule')
+    needs: [verify, deploy]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check HTTPS, HSTS, contact and resources
+        run: python tools/card/security.py --root . --live
